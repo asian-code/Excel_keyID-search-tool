@@ -1,0 +1,109 @@
+import openpyxl
+import os
+import glob
+import csv
+import win32com.client
+import time
+'''pip install pywin32,openpyxl,glob'''
+excel = win32com.client.Dispatch("Excel.Application")# open excel app
+folder_path = "C:\\Users\\eric.nguyen\\Desktop"
+checkerFile_name = "var.xlsx"
+excel_list = glob.glob(os.path.join(folder_path, '*.xlsx'))
+print("\nFiles found: ", excel_list, "\n")
+# file with variables to check for
+checker = openpyxl.load_workbook(checkerFile_name).active
+
+var = []  # list of variable to check for
+ids = []  # list of IDs that are correlated to var[]
+
+for row in checker.iter_rows():  # seperate the IDs and dataset from checker file
+    o = []
+    for cell in row:
+        if (cell.col_idx == 1 and cell.value is not None):
+            ids.append(cell.value)
+        elif(cell.value is not None):
+            o.append(str(cell.value))
+    var.append(o)
+
+print("Find-Me IDs and values:", ids, "-\t", var)
+
+#setup the save file
+with open('Results.csv', 'w',newline='') as f:
+    writer=csv.writer(f)
+    writer.writerow(["File","Missing placeholder","Cell name","Cell coordinates"])
+# Print everything in Sheet
+# for row in range(2, sheet.max_row): # first num = starting Row number
+#     for idx,cell in enumerate(sheet[row]):
+#         print(cell.value,end="\t") #position data = <header_row[idx].value , row>
+#     print("\n")
+
+red = '\033[31m'
+green = '\033[32m'
+yellow = '\033[33m'
+cyan = '\033[36m'
+reset = '\033[0m'
+
+def checkfile(file):
+    header_row = []  # the header row for sheet
+    issues = []
+    cellCord="" # cordinates for current cell
+    sheet = openpyxl.load_workbook(file).active
+    for cell in sheet[1]:  # store the headers of the excel sheet
+        # if(cell.col_idx!=1):
+        header_row.append(cell.value)
+    print("Headers:", header_row)
+    # Iterate the loop to read the cell values
+    for row in range(2, sheet.max_row+1):  # first num = starting Row number
+        dataindex = -1  # dataset position index (for var) placeholder
+        for idx, cell in enumerate(sheet[row]):
+            cellCord=cell.column_letter+","+str(cell.row)
+            # print(cellCord)
+            if (cell.value is not None):  # only check if the cell is not empty
+                c = []  # gather all issues in current cell
+                if (cell.col_idx == 1 and cell.value is not None):  # find the index of the ID and grab the dataset using index
+                    if (cell.value in ids):
+                        dataindex = ids.index(cell.value)
+                        # print("In file ID: "+cell.value)
+                    else:
+                        print("NO matching ID found for "+cell.value)
+                        break
+                else:  # Not ID, check cell for variables in var list
+                    # print("("+str(cell.col_idx)+")",end="")
+                    # check if all variables are present ----------------
+                    for i in var[dataindex]:
+                        # for dataset in i:
+                        if (i not in cell.value):
+                            c.append(i)
+                    if (len(c) != 0):  # only save list if it is not empty
+                        issues.append(
+                            f"{c}:{header_row[idx]}:{ids[dataindex]}:{cellCord}")
+            # position data = <header_row[idx].value , row>
+        #     print(cell.value, end="\t")
+        # print("\n")
+    # Save results into file
+    with open('Results.csv', 'a',newline='') as f:
+        writer=csv.writer(f)
+        # writer.writerow(["File","Missing placeholder","Location"])
+        print(f"---Results For File({green}{filename}{reset})--------------------------------------")
+        # f.write(f"---Results For File({filename})--------------------------------------\n")
+        for i in issues:
+            data = i.split(":")
+            print(f"{yellow}{data[0]}{reset} not found in {cyan}{data[1]}{reset},{cyan}{data[2]}{reset} ({data[3]})")
+            # f.write(f"{data[0]} not found in [{data[1]},{data[2]}]\n")
+            writer.writerow([filename,data[0],"{0},{1}".format(data[1],data[2]),data[3]])
+        print("\n--------------------\n")
+        
+for filepath in excel_list:
+    filename = os.path.basename(filepath)
+    if (filename == checkerFile_name or "~" in filename ):  # skip file conditions [or filename == "Book1.xlsx"]
+        print("Skipping: " + filename)
+        continue
+    try:
+        checkfile(filepath)
+    except:
+        print("[!] Error in file "+ filename)
+        raise
+
+ # Open the results file for User
+workbook = excel.Workbooks.Open(folder_path+"\\Results.csv")
+excel.Visible = True
